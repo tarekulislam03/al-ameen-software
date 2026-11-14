@@ -10,7 +10,10 @@ const PORT = process.env.PORT || 4000;
 app.use(cors());
 app.use(express.json());
 
-// Public: liveness + login
+// Public: root + liveness + login
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', service: 'Al Ameen Motor API' });
+});
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });

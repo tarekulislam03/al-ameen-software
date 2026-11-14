@@ -41,7 +41,8 @@ export interface CacheStatus {
 
 const getDefaultBaseUrl = () => {
   if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL;
+    const clean = process.env.EXPO_PUBLIC_API_URL.trim().replace(/\/+$/, '');
+    return clean.endsWith('/api') ? clean : `${clean}/api`;
   }
   if (Platform.OS === 'android') {
     return 'http://10.0.2.2:4000/api';
