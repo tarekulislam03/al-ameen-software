@@ -13,7 +13,7 @@ export function ErpShell({ children }: { children: React.ReactNode }) {
     <View style={styles.root}>
       <View style={styles.topBar}>
         <Text style={styles.title} numberOfLines={1}>
-          AL AMEEN MOTOR{isMobile ? '' : ' - Customer & Payment Manager'}
+          AL AMIN MOTOR TRAINING{isMobile ? '' : ' - Customer & Payment Manager'}
         </Text>
         <View style={styles.topRight}>
           {!isMobile && user && <Text style={styles.topUser}>User: {user.username}</Text>}

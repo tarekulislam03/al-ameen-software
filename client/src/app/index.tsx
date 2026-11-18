@@ -2,8 +2,8 @@ import { useRouter, type Href } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 
-import { CustomerFormDialog } from '@/components/customer-forms';
-import { Btn, Chips, Input, InputRef, money, Select, StatusBadge, T } from '@/components/erp-ui';
+import { CATEGORIES, CustomerFormDialog } from '@/components/customer-forms';
+import { Btn, Chips, formatDate, Input, InputRef, money, ProgressStatusBar, Select, StatusBadge, T } from '@/components/erp-ui';
 import { ERP } from '@/constants/erp';
 import { api, Customer } from '@/services/api';
 
@@ -12,7 +12,7 @@ type SortKey =
   | 'id'
   | 'name'
   | 'phone'
-  | 'course'
+  | 'category'
   | 'totalFee'
   | 'paidAmount'
   | 'balance'
@@ -23,7 +23,7 @@ const COLS: { key: SortKey; label: string; flex: number; min: number; numeric?: 
   { key: 'id', label: 'ID', flex: 0.9, min: 92 },
   { key: 'name', label: 'Name', flex: 1.6, min: 140 },
   { key: 'phone', label: 'Phone', flex: 1.2, min: 110 },
-  { key: 'course', label: 'Course', flex: 2, min: 170 },
+  { key: 'category', label: 'Category', flex: 2, min: 170 },
   { key: 'totalFee', label: 'Total Fee', flex: 0.9, min: 84, numeric: true },
   { key: 'paidAmount', label: 'Paid', flex: 0.9, min: 84, numeric: true },
   { key: 'balance', label: 'Balance', flex: 0.9, min: 84, numeric: true },
@@ -46,7 +46,7 @@ export default function CustomersScreen() {
   // search / filters / sort / paging
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
-  const [courseFilter, setCourseFilter] = useState('All courses');
+  const [categoryFilter, setCategoryFilter] = useState('All categories');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -62,6 +62,7 @@ export default function CustomersScreen() {
 
   const load = useCallback(async () => {
     try {
+      setLoading(true);
       setError(null);
       setCustomers(await api.listCustomers());
     } catch (e: any) {
@@ -90,8 +91,8 @@ export default function CustomersScreen() {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
-  const courses = useMemo(
-    () => ['All courses', ...Array.from(new Set(customers.map((c) => c.course).filter(Boolean))).sort()],
+  const categories = useMemo(
+    () => ['All categories', ...Array.from(new Set([...CATEGORIES, ...customers.map((c) => c.category).filter(Boolean)]))],
     [customers]
   );
 
@@ -106,7 +107,7 @@ export default function CustomersScreen() {
         if (!nameHit && !phoneHit) return false;
       }
       if (statusFilter !== 'All' && c.paymentStatus !== statusFilter) return false;
-      if (courseFilter !== 'All courses' && c.course !== courseFilter) return false;
+      if (categoryFilter !== 'All categories' && c.category !== categoryFilter) return false;
       if (dateFrom && (!c.enrollmentDate || c.enrollmentDate < dateFrom)) return false;
       if (dateTo && (!c.enrollmentDate || c.enrollmentDate > dateTo)) return false;
       return true;
@@ -119,7 +120,7 @@ export default function CustomersScreen() {
       if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
       return String(av ?? '').localeCompare(String(bv ?? ''), undefined, { numeric: true, sensitivity: 'base' }) * dir;
     });
-  }, [customers, query, statusFilter, courseFilter, dateFrom, dateTo, sortKey, sortDir]);
+  }, [customers, query, statusFilter, categoryFilter, dateFrom, dateTo, sortKey, sortDir]);
 
   const size = Number(pageSize);
   const pageCount = Math.max(1, Math.ceil(filtered.length / size));
@@ -129,17 +130,17 @@ export default function CustomersScreen() {
 
   useEffect(() => {
     setPage(1);
-  }, [query, statusFilter, courseFilter, dateFrom, dateTo, sortKey, sortDir, pageSize]);
+  }, [query, statusFilter, categoryFilter, dateFrom, dateTo, sortKey, sortDir, pageSize]);
 
   const activeFilters =
     (statusFilter !== 'All' ? 1 : 0) +
-    (courseFilter !== 'All courses' ? 1 : 0) +
+    (categoryFilter !== 'All categories' ? 1 : 0) +
     (dateFrom ? 1 : 0) +
     (dateTo ? 1 : 0);
 
   const clearFilters = () => {
     setStatusFilter('All');
-    setCourseFilter('All courses');
+    setCategoryFilter('All categories');
     setDateFrom('');
     setDateTo('');
   };
@@ -188,7 +189,7 @@ export default function CustomersScreen() {
           mobile={isMobile}
         />
       </View>
-      <Select label="Course" value={courseFilter} options={courses} onChange={setCourseFilter} mobile={isMobile} />
+      <Select label="Category" value={categoryFilter} options={categories} onChange={setCategoryFilter} mobile={isMobile} />
       <View style={s.filterField}>
         <T style={s.fieldLabel}>Enrolled from / to (YYYY-MM-DD)</T>
         <View style={s.dateRow}>
@@ -255,6 +256,8 @@ export default function CustomersScreen() {
       case 'paidAmount':
       case 'balance':
         return <T style={{ textAlign: 'right' }}>{money(c[key])}</T>;
+      case 'enrollmentDate':
+        return <T numberOfLines={1}>{formatDate(c.enrollmentDate)}</T>;
       case 'paymentStatus':
         return <StatusBadge status={c.paymentStatus} />;
       default:
@@ -340,8 +343,16 @@ export default function CustomersScreen() {
         </Pressable>
       )}
 
+      <ProgressStatusBar active={loading} message="Loading customers from database..." />
+
       <View style={s.gridWrap}>
-        {loading ? <T style={s.empty}>Loading...</T> : isMobile ? mobileList : desktopGrid}
+        {loading && customers.length === 0 ? (
+          <T style={s.empty}>Loading...</T>
+        ) : isMobile ? (
+          mobileList
+        ) : (
+          desktopGrid
+        )}
         {pager}
       </View>
 

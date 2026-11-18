@@ -44,7 +44,7 @@ export default function LoginScreen() {
     <View style={styles.page}>
       <View style={styles.box}>
         <View style={styles.header}>
-          <Text style={styles.headerText}>AL AMEEN MOTOR - Login</Text>
+          <Text style={styles.headerText}>AL AMIN MOTOR TRAINING - Login</Text>
         </View>
         <View style={styles.form}>
           <Text style={styles.label}>Username</Text>

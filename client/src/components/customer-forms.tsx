@@ -1,10 +1,24 @@
-import React, { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Platform, StyleSheet, View } from 'react-native';
 
-import { Btn, Chips, DatePicker, Dialog, Field, Input, money, T, today } from '@/components/erp-ui';
+import {
+  Btn,
+  Chips,
+  DatePicker,
+  Dialog,
+  Field,
+  Input,
+  InputRef,
+  money,
+  ProgressStatusBar,
+  Select,
+  T,
+  today,
+} from '@/components/erp-ui';
 import { ERP } from '@/constants/erp';
 import { api, Customer, Payment } from '@/services/api';
 
+export const CATEGORIES = ['New DL', 'Renew LL', 'Renew DL', 'Training', 'TO', 'HPT', 'RR', 'Miscellaneous'];
 export const DOC_STATUSES = ['Pending', 'Submitted', 'Verified', 'LL Issued', 'DL Issued'];
 export const PAY_MODES = ['Cash', 'UPI', 'Card'];
 
@@ -13,7 +27,7 @@ const emptyForm = () => ({
   phone: '',
   address: '',
   dob: '',
-  course: '',
+  category: '',
   enrollmentDate: today(),
   totalFee: '',
   notes: '',
@@ -38,6 +52,14 @@ export function CustomerFormDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const phoneRef = useRef<InputRef>(null);
+  const dobRef = useRef<any>(null);
+  const enrollRef = useRef<any>(null);
+  const categoryRef = useRef<any>(null);
+  const totalFeeRef = useRef<InputRef>(null);
+  const addressRef = useRef<InputRef>(null);
+  const notesRef = useRef<InputRef>(null);
+
   useEffect(() => {
     if (!visible) return;
     setError(null);
@@ -48,7 +70,7 @@ export function CustomerFormDialog({
             phone: customer.phone,
             address: customer.address,
             dob: customer.dob,
-            course: customer.course,
+            category: customer.category,
             enrollmentDate: customer.enrollmentDate,
             totalFee: String(customer.totalFee ?? ''),
             notes: customer.notes,
@@ -87,36 +109,101 @@ export function CustomerFormDialog({
       isMobile={isMobile}>
       <View style={s.grid}>
         <Field label="Name *">
-          <Input value={form.name} onChangeText={set('name')} style={h} />
+          <Input
+            value={form.name}
+            onChangeText={set('name')}
+            returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => phoneRef.current?.focus()}
+            style={h}
+          />
         </Field>
         <Field label="Phone *">
-          <Input value={form.phone} onChangeText={set('phone')} keyboardType="phone-pad" style={h} />
+          <Input
+            ref={phoneRef}
+            value={form.phone}
+            onChangeText={set('phone')}
+            keyboardType="phone-pad"
+            returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => (Platform.OS === 'web' ? dobRef.current?.focus() : totalFeeRef.current?.focus())}
+            style={h}
+          />
         </Field>
         <Field label="Date of birth">
-          <DatePicker value={form.dob} onChange={set('dob')} mobile={isMobile} maxDate={today()} />
+          <DatePicker
+            value={form.dob}
+            onChange={set('dob')}
+            mobile={isMobile}
+            maxDate={today()}
+            inputRef={dobRef}
+            onEnter={() => enrollRef.current?.focus()}
+          />
         </Field>
-        <Field label="Enrollment date (YYYY-MM-DD)">
-          <Input value={form.enrollmentDate} onChangeText={set('enrollmentDate')} style={h} />
+        <Field label="Enrollment date">
+          <DatePicker
+            value={form.enrollmentDate}
+            onChange={set('enrollmentDate')}
+            mobile={isMobile}
+            inputRef={enrollRef}
+            onEnter={() => categoryRef.current?.focus()}
+          />
         </Field>
-        <Field label="Course">
-          <Input value={form.course} onChangeText={set('course')} style={h} />
+        <Field label="Category" zIndex={100}>
+          <Select
+            value={form.category}
+            options={CATEGORIES}
+            onChange={set('category')}
+            placeholder="Select category"
+            mobile={isMobile}
+            selectRef={categoryRef}
+            onEnter={() => totalFeeRef.current?.focus()}
+          />
         </Field>
         <Field label="Total fee (₹)">
-          <Input value={form.totalFee} onChangeText={set('totalFee')} keyboardType="numeric" style={h} />
+          <Input
+            ref={totalFeeRef}
+            value={form.totalFee}
+            onChangeText={set('totalFee')}
+            keyboardType="numeric"
+            returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => addressRef.current?.focus()}
+            style={h}
+          />
         </Field>
         <Field label="Address" full>
-          <Input value={form.address} onChangeText={set('address')} style={h} />
+          <Input
+            ref={addressRef}
+            value={form.address}
+            onChangeText={set('address')}
+            returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => notesRef.current?.focus()}
+            style={h}
+          />
         </Field>
         <Field label="Document status" full>
           <Chips options={DOC_STATUSES} value={form.documentStatus} onChange={set('documentStatus')} mobile={isMobile} />
         </Field>
         <Field label="Notes" full>
-          <Input value={form.notes} onChangeText={set('notes')} style={h} />
+          <Input
+            ref={notesRef}
+            value={form.notes}
+            onChangeText={set('notes')}
+            returnKeyType="done"
+            onSubmitEditing={save}
+            style={h}
+          />
         </Field>
       </View>
       <T style={{ color: ERP.textMuted, fontSize: 12 }}>
         Paid amount, balance and status are calculated from the Payments tab.
       </T>
+      <ProgressStatusBar
+        active={busy}
+        message={customer ? 'Editing customer in database...' : 'Saving customer to database...'}
+      />
       {error && <T style={{ color: ERP.danger }}>{error}</T>}
       <View style={s.btnRow}>
         <Btn label={busy ? 'Saving...' : 'Save'} primary onPress={save} disabled={busy} mobile={isMobile} />
@@ -145,6 +232,8 @@ export function PaymentFormDialog({
   const [pay, setPay] = useState({ amount: '', date: today(), mode: 'Cash', note: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const amountRef = useRef<InputRef>(null);
+  const noteRef = useRef<InputRef>(null);
 
   // The most this payment may be: the balance due, plus the old amount when editing.
   const maxAmount = customer ? Math.max(0, customer.balance + (payment ? Number(payment.amount) : 0)) : 0;
@@ -202,13 +291,24 @@ export function PaymentFormDialog({
       </T>
       <View style={s.grid}>
         <Field label="Date (YYYY-MM-DD) *">
-          <Input value={pay.date} onChangeText={(v) => setPay({ ...pay, date: v })} style={h} />
+          <Input
+            value={pay.date}
+            onChangeText={(v) => setPay({ ...pay, date: v })}
+            returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => amountRef.current?.focus()}
+            style={h}
+          />
         </Field>
         <Field label="Amount (₹) *">
           <Input
+            ref={amountRef}
             value={pay.amount}
             onChangeText={(v) => setPay({ ...pay, amount: v })}
             keyboardType="numeric"
+            returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => noteRef.current?.focus()}
             style={h}
           />
         </Field>
@@ -216,9 +316,20 @@ export function PaymentFormDialog({
           <Chips options={PAY_MODES} value={pay.mode} onChange={(v) => setPay({ ...pay, mode: v })} mobile={isMobile} />
         </Field>
         <Field label="Note" full>
-          <Input value={pay.note} onChangeText={(v) => setPay({ ...pay, note: v })} style={h} />
+          <Input
+            ref={noteRef}
+            value={pay.note}
+            onChangeText={(v) => setPay({ ...pay, note: v })}
+            returnKeyType="done"
+            onSubmitEditing={save}
+            style={h}
+          />
         </Field>
       </View>
+      <ProgressStatusBar
+        active={busy}
+        message={payment ? 'Editing payment in database...' : 'Saving payment to database...'}
+      />
       {error && <T style={{ color: ERP.danger }}>{error}</T>}
       <View style={s.btnRow}>
         <Btn

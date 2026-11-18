@@ -213,7 +213,7 @@ test('Google Sheets Service & REST API Endpoints (Customers & Payments)', async 
       phone: '+91 9123456780',
       address: '45 Brigade Road',
       dob: '2000-02-20',
-      course: 'LMV Automatic',
+      category: 'Training',
       enrollmentDate: '2026-11-14',
       totalFee: 6000,
       notes: 'Evening batch',

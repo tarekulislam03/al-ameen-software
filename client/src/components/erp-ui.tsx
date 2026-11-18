@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Linking,
   Modal,
@@ -17,6 +17,10 @@ import type { Customer } from '@/services/api';
 
 // ---------- helpers ----------
 export const today = () => new Date().toISOString().slice(0, 10);
+export const formatDate = (v: string) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v || '').trim());
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : v;
+};
 export const money = (n: number) => `₹${(Number(n) || 0).toLocaleString()}`;
 
 export function openUrl(url: string, newTab = false) {
@@ -70,21 +74,36 @@ export function DatePicker({
   onChange,
   mobile,
   maxDate,
+  inputRef,
+  onEnter,
 }: {
   value: string;
   onChange: (v: string) => void;
   mobile?: boolean;
   maxDate?: string;
+  inputRef?: React.Ref<any>;
+  onEnter?: () => void;
 }) {
   const [open, setOpen] = useState(false);
 
   if (Platform.OS === 'web') {
     return (
       <input
+        ref={inputRef}
         type="date"
         value={/^\d{4}-\d{2}-\d{2}$/.test(value) ? value : ''}
         max={maxDate}
         onChange={(e) => onChange(e.target.value)}
+        onKeyDown={
+          onEnter
+            ? (e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  onEnter();
+                }
+              }
+            : undefined
+        }
         style={{
           borderWidth: 1,
           borderStyle: 'solid',
@@ -141,7 +160,7 @@ export function DatePicker({
           },
           mobile && { minHeight: 44 },
         ]}>
-        <T style={!value && { color: '#777777' }}>{value || 'Select date'}</T>
+        <T style={!value && { color: '#777777' }}>{value ? formatDate(value) : 'Select date'}</T>
         <T style={{ color: ERP.textMuted }}>▾</T>
       </Pressable>
       <Dialog visible={open} title="Select Date" onClose={() => setOpen(false)} isMobile={!!mobile} maxWidth={380}>
@@ -268,41 +287,98 @@ export function Select({
   value,
   options,
   onChange,
+  placeholder,
   mobile,
+  selectRef,
+  onEnter,
 }: {
-  label: string;
+  label?: string;
   value: string;
   options: string[];
   onChange: (v: string) => void;
+  placeholder?: string;
   mobile?: boolean;
+  selectRef?: React.Ref<any>;
+  onEnter?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const allOptions = value && !options.includes(value) ? [value, ...options] : options;
+
+  if (Platform.OS === 'web') {
+    return (
+      <View style={u.filterField}>
+        {label ? <T style={u.fieldLabel}>{label}</T> : null}
+        <select
+          ref={selectRef}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={
+            onEnter
+              ? (e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    onEnter();
+                  }
+                }
+              : undefined
+          }
+          style={{
+            borderWidth: 1,
+            borderStyle: 'solid',
+            borderColor: ERP.border,
+            backgroundColor: ERP.white,
+            paddingLeft: 6,
+            paddingRight: 6,
+            paddingTop: 4,
+            paddingBottom: 4,
+            fontFamily: ERP.font,
+            fontSize: ERP.fontSize,
+            color: value ? ERP.text : '#777777',
+            minHeight: mobile ? 44 : undefined,
+            minWidth: label ? 190 : undefined,
+            boxSizing: 'border-box',
+            width: '100%',
+          }}>
+          {placeholder ? <option value="">{placeholder}</option> : null}
+          {allOptions.map((o) => (
+            <option key={o} value={o} style={{ color: ERP.text }}>
+              {o}
+            </option>
+          ))}
+        </select>
+      </View>
+    );
+  }
+
   return (
-    <View style={[u.filterField, { zIndex: open ? 30 : 1 }]}>
-      <T style={u.fieldLabel}>{label}</T>
-      <Pressable onPress={() => setOpen((o) => !o)} style={[u.selectBtn, mobile && { minHeight: 44 }]}>
-        <T numberOfLines={1} style={{ flex: 1 }}>
-          {value}
+    <View style={u.filterField}>
+      {label ? <T style={u.fieldLabel}>{label}</T> : null}
+      <Pressable onPress={() => setOpen(true)} style={[u.selectBtn, mobile && { minHeight: 44 }]}>
+        <T numberOfLines={1} style={[{ flex: 1 }, !value && { color: '#777777' }]}>
+          {value || placeholder || ''}
         </T>
-        <T>{open ? '▴' : '▾'}</T>
+        <T>▾</T>
       </Pressable>
-      {open && (
-        <View style={u.selectList}>
-          <ScrollView style={{ maxHeight: 200 }}>
-            {options.map((o) => (
-              <Pressable
-                key={o}
-                onPress={() => {
-                  onChange(o);
-                  setOpen(false);
-                }}
-                style={[u.selectItem, mobile && { minHeight: 44 }, o === value && { backgroundColor: ERP.activeBg }]}>
-                <T>{o}</T>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
-      )}
+      <Dialog
+        visible={open}
+        title={label || placeholder || 'Select'}
+        onClose={() => setOpen(false)}
+        isMobile={!!mobile}
+        maxWidth={360}>
+        <ScrollView style={{ maxHeight: 300, borderWidth: 1, borderColor: ERP.border, backgroundColor: ERP.white }}>
+          {allOptions.map((o) => (
+            <Pressable
+              key={o}
+              onPress={() => {
+                onChange(o);
+                setOpen(false);
+              }}
+              style={[u.selectItem, mobile && { minHeight: 44 }, o === value && { backgroundColor: ERP.activeBg }]}>
+              <T style={o === value && { fontWeight: '700' }}>{o}</T>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </Dialog>
     </View>
   );
 }
@@ -320,9 +396,24 @@ export function StatusBadge({ status }: { status: Customer['paymentStatus'] }) {
   );
 }
 
-export function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
+export function Field({
+  label,
+  children,
+  full,
+  zIndex,
+}: {
+  label: string;
+  children: React.ReactNode;
+  full?: boolean;
+  zIndex?: number;
+}) {
   return (
-    <View style={[{ gap: 3 }, full ? { width: '100%' } : { flexGrow: 1, flexBasis: 220, minWidth: 0 }]}>
+    <View
+      style={[
+        { gap: 3 },
+        full ? { width: '100%' } : { flexGrow: 1, flexBasis: 220, minWidth: 0 },
+        zIndex !== undefined && { zIndex, elevation: zIndex },
+      ]}>
       <T style={u.fieldLabel}>{label}</T>
       {children}
     </View>
@@ -363,6 +454,38 @@ export function Dialog({
 
 export const fieldLabelStyle = { color: ERP.textMuted, fontSize: 12 } as const;
 
+export function ProgressStatusBar({ active, message }: { active: boolean; message: string }) {
+  const [pct, setPct] = useState(12);
+
+  useEffect(() => {
+    if (!active) {
+      setPct(12);
+      return;
+    }
+    setPct(15);
+    const id = setInterval(() => {
+      setPct((p) => (p >= 94 ? 94 : p + Math.max(2, Math.round((95 - p) * 0.2))));
+    }, 180);
+    return () => clearInterval(id);
+  }, [active]);
+
+  if (!active) return null;
+
+  return (
+    <View style={u.progressWrap}>
+      <View style={u.progressTop}>
+        <T style={u.progressMsg} numberOfLines={1}>
+          {message}
+        </T>
+        <T style={u.progressPct}>{pct}%</T>
+      </View>
+      <View style={u.progressTrack}>
+        <View style={[u.progressFill, { width: `${pct}%` }]} />
+      </View>
+    </View>
+  );
+}
+
 const u = StyleSheet.create({
   btn: {
     borderWidth: 1,
@@ -397,9 +520,12 @@ const u = StyleSheet.create({
   },
   selectList: {
     position: 'absolute',
-    top: 44,
+    top: '100%',
+    marginTop: 2,
     left: 0,
     right: 0,
+    zIndex: 1000,
+    elevation: 20,
     borderWidth: 1,
     borderColor: ERP.border,
     backgroundColor: ERP.white,
@@ -431,5 +557,31 @@ const u = StyleSheet.create({
     paddingVertical: 3,
     minHeight: 28,
     justifyContent: 'center',
+  },
+  progressWrap: {
+    borderWidth: 1,
+    borderColor: ERP.border,
+    backgroundColor: ERP.white,
+    padding: 6,
+    gap: 4,
+  },
+  progressTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  progressMsg: { fontSize: 12, color: ERP.text, flex: 1 },
+  progressPct: { fontSize: 12, fontWeight: '700', color: ERP.navy },
+  progressTrack: {
+    height: 8,
+    backgroundColor: ERP.panelBg,
+    borderWidth: 1,
+    borderColor: ERP.border,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: ERP.navy,
   },
 });

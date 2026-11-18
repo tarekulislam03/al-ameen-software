@@ -12,7 +12,7 @@ app.use(express.json());
 
 // Public: root + liveness + login
 app.get('/', (req, res) => {
-  res.json({ status: 'ok', service: 'Al Ameen Motor API' });
+  res.json({ status: 'ok', service: 'AL AMIN MOTOR TRAINING API' });
 });
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
@@ -66,7 +66,7 @@ app.get('/api/customers', async (req, res, next) => {
           c.name.toLowerCase().includes(q) ||
           c.phone.toLowerCase().includes(q) ||
           c.id.toLowerCase().includes(q) ||
-          c.course.toLowerCase().includes(q)
+          c.category.toLowerCase().includes(q)
       );
     }
     if (documentStatus && documentStatus !== 'All') {
@@ -107,6 +107,7 @@ app.post('/api/customers', async (req, res, next) => {
       phone,
       address,
       dob,
+      category,
       course,
       enrollmentDate,
       totalFee,
@@ -126,7 +127,7 @@ app.post('/api/customers', async (req, res, next) => {
       phone,
       address,
       dob,
-      course,
+      category: category ?? course,
       enrollmentDate,
       totalFee,
       notes,
@@ -286,7 +287,7 @@ if (require.main === module) {
     })
     .finally(() => {
       app.listen(PORT, () => {
-        console.log(`Al Ameen Motor Backend running on http://localhost:${PORT}`);
+        console.log(`AL AMIN MOTOR TRAINING Backend running on http://localhost:${PORT}`);
       });
     });
 }

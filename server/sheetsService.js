@@ -10,7 +10,7 @@ const CUSTOMER_HEADERS = [
   'phone',
   'address',
   'DOB',
-  'course',
+  'category',
   'enrollment date',
   'total fee',
   'notes',
@@ -232,7 +232,7 @@ function rowToCustomer(row) {
     phone: String(row[2] ?? '').trim(),
     address: String(row[3] ?? '').trim(),
     dob: String(row[4] ?? '').trim(),
-    course: String(row[5] ?? '').trim(),
+    category: String(row[5] ?? '').trim(),
     enrollmentDate: String(row[6] ?? '').trim(),
     totalFee: Number(row[7] ?? 0) || 0,
     notes: String(row[8] ?? '').trim(),
@@ -248,7 +248,7 @@ function customerToRow(customer) {
     customer.phone || '',
     customer.address || '',
     customer.dob || '',
-    customer.course || '',
+    customer.category || '',
     customer.enrollmentDate || '',
     Number(customer.totalFee ?? 0) || 0,
     customer.notes || '',
@@ -484,7 +484,7 @@ function seedInitialMemoryData() {
       phone: '+91 98765 43210',
       address: '14 MG Road, Indiranagar',
       dob: '1998-05-14',
-      course: 'LMV + MCWG Combo (DL + Training)',
+      category: 'New DL',
       enrollmentDate: '2026-10-15',
       totalFee: 6500,
       notes: 'Morning batch 7:00 AM - 8:00 AM. Learner licence approved.',
@@ -497,7 +497,7 @@ function seedInitialMemoryData() {
       phone: '+91 98450 11223',
       address: '22 Park Street, Frazer Town',
       dob: '2001-11-02',
-      course: 'LMV Automatic Car Training (20 Days)',
+      category: 'Training',
       enrollmentDate: '2026-11-01',
       totalFee: 5000,
       notes: 'Needs weekend driving practice slots.',
@@ -510,7 +510,7 @@ function seedInitialMemoryData() {
       phone: '+91 99001 55667',
       address: '88 Residency Layout, Koramangala',
       dob: '1995-03-21',
-      course: 'Heavy Transport Badge + DL Renewal',
+      category: 'Renew DL',
       enrollmentDate: '2026-11-10',
       totalFee: 4200,
       notes: 'Awaiting medical certificate upload.',
@@ -641,7 +641,7 @@ async function createCustomer(payload) {
     phone: String(payload.phone ?? '').trim(),
     address: String(payload.address ?? '').trim(),
     dob: String(payload.dob ?? '').trim(),
-    course: String(payload.course ?? '').trim(),
+    category: String(payload.category ?? payload.course ?? '').trim(),
     enrollmentDate:
       String(payload.enrollmentDate ?? '').trim() ||
       new Date().toISOString().slice(0, 10),
@@ -698,10 +698,12 @@ async function updateCustomer(customerId, updates) {
         ? String(updates.address).trim()
         : existing.address,
     dob: updates.dob !== undefined ? String(updates.dob).trim() : existing.dob,
-    course:
-      updates.course !== undefined
-        ? String(updates.course).trim()
-        : existing.course,
+    category:
+      updates.category !== undefined
+        ? String(updates.category).trim()
+        : updates.course !== undefined
+          ? String(updates.course).trim()
+          : existing.category,
     enrollmentDate:
       updates.enrollmentDate !== undefined
         ? String(updates.enrollmentDate).trim()
@@ -846,6 +848,11 @@ async function deleteCustomer(customerId) {
   }
 
   await refreshAfterAppsScriptWrite(scriptResult);
+  if (isAppsScriptConfigured() && cache.customers.some((c) => c.id === customerId)) {
+    throw new Error(
+      'Customer was not deleted from Google Sheets. Check that Row 1 of the Customers sheet is a header row (starting with "ID"), not a customer record.'
+    );
+  }
   return true;
 }
 

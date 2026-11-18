@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { CustomerFormDialog, PaymentFormDialog } from '@/components/customer-forms';
-import { Btn, money, openUrl, StatusBadge, T, whatsappNumber } from '@/components/erp-ui';
+import { Btn, formatDate, money, openUrl, ProgressStatusBar, StatusBadge, T, whatsappNumber } from '@/components/erp-ui';
 import { ERP } from '@/constants/erp';
 import { api, Customer, Payment } from '@/services/api';
 
@@ -22,6 +22,7 @@ export default function CustomerDetailScreen() {
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [busyMessage, setBusyMessage] = useState('Saving to database...');
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -44,6 +45,7 @@ export default function CustomerDetailScreen() {
   const remove = async () => {
     if (!customer) return;
     try {
+      setBusyMessage('Deleting customer from database...');
       setBusy(true);
       await api.deleteCustomer(customer.id);
       goBack();
@@ -55,6 +57,7 @@ export default function CustomerDetailScreen() {
 
   const removePayment = async (paymentId: string) => {
     try {
+      setBusyMessage('Deleting payment from database...');
       setBusy(true);
       await api.deletePayment(paymentId);
       setDeletingPaymentId(null);
@@ -71,14 +74,20 @@ export default function CustomerDetailScreen() {
   const whatsappReminder = () => {
     if (!customer) return;
     const msg =
-      `Dear ${customer.name}, this is a gentle reminder from Al Ameen Motor that ${money(customer.balance)} ` +
-      `is pending${customer.course ? ` for your ${customer.course} course` : ''}. ` +
+      `Dear ${customer.name}, this is a gentle reminder from AL AMIN MOTOR TRAINING that ${money(customer.balance)} ` +
+      `is pending${customer.category ? ` for ${customer.category}` : ''}. ` +
       `Total fee ${money(customer.totalFee)}, paid ${money(customer.paidAmount)}. ` +
       'Kindly clear the balance at your earliest convenience. Thank you.';
     openUrl(`https://wa.me/${whatsappNumber(customer.phone)}?text=${encodeURIComponent(msg)}`, true);
   };
 
-  if (loading) return <T style={s.msg}>Loading...</T>;
+  if (loading) {
+    return (
+      <View style={s.page}>
+        <ProgressStatusBar active message="Loading customer from database..." />
+      </View>
+    );
+  }
   if (!customer) {
     return (
       <View style={s.page}>
@@ -106,6 +115,8 @@ export default function CustomerDetailScreen() {
         </T>
         <T style={{ color: ERP.textMuted }}>{customer.id}</T>
       </View>
+
+      <ProgressStatusBar active={busy} message={busyMessage} />
 
       {error && (
         <Pressable onPress={() => setError(null)} style={s.errorBar}>
@@ -148,9 +159,9 @@ export default function CustomerDetailScreen() {
       <View style={[s.panel, s.kvWrap]}>
         {kv('Name', customer.name, true)}
         {kv('Phone', customer.phone)}
-        {kv('Date of birth', customer.dob)}
-        {kv('Enrolled on', customer.enrollmentDate)}
-        {kv('Course', customer.course)}
+        {kv('Date of birth', formatDate(customer.dob))}
+        {kv('Enrolled on', formatDate(customer.enrollmentDate))}
+        {kv('Category', customer.category)}
         {kv('Document status', customer.documentStatus, true)}
         {kv('Address', customer.address)}
         {kv('Notes', customer.notes)}
@@ -190,7 +201,7 @@ export default function CustomerDetailScreen() {
         {payments.length === 0 && <T style={{ padding: 8, color: ERP.textMuted }}>No payments recorded.</T>}
         {payments.map((p, i) => (
           <View key={p.paymentId} style={[s.tr, { backgroundColor: i % 2 === 0 ? ERP.white : '#EEF1F6' }]}>
-            <T style={[s.td, { width: 96 }]}>{p.date}</T>
+            <T style={[s.td, { width: 96 }]}>{formatDate(p.date)}</T>
             <T style={[s.td, { width: 70 }]}>{p.mode}</T>
             <T style={[s.td, { flex: 1 }]}>{p.note}</T>
             <T style={[s.td, { width: 90, textAlign: 'right' }]}>{money(p.amount)}</T>

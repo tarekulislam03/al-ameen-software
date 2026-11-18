@@ -6,7 +6,7 @@ export interface Customer {
   phone: string;
   address: string;
   dob: string;
-  course: string;
+  category: string;
   enrollmentDate: string;
   totalFee: number;
   notes: string;
