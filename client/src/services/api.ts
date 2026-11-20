@@ -54,6 +54,85 @@ export const API_BASE_URL = getDefaultBaseUrl();
 
 export interface AuthUser {
   username: string;
+  role: 'admin' | 'staff';
+  name: string;
+  counter?: string | null;
+}
+
+export interface ActivityChange {
+  field: string;
+  label: string;
+  from: string | number;
+  to: string | number;
+}
+
+export interface ActivityLogEntry {
+  id: string;
+  timestamp: string;
+  date: string;
+  actor: {
+    username: string;
+    name: string;
+    role: 'admin' | 'staff';
+    counter?: string | null;
+  };
+  action: 'CREATE' | 'UPDATE' | 'DELETE';
+  entityType: 'customer' | 'payment';
+  entityId: string;
+  customerId: string;
+  customerName: string;
+  summary: string;
+  changes: ActivityChange[];
+  amount: number | null;
+  mode: string | null;
+}
+
+export interface CounterStats {
+  customersCreated: number;
+  customersUpdated: number;
+  customersDeleted: number;
+  paymentsCreated: number;
+  paymentsUpdated: number;
+  paymentsDeleted: number;
+  paymentCollectedAmount: number;
+  paymentModeBreakdown: Record<string, number>;
+  totalActions: number;
+}
+
+export interface CounterSummary {
+  id?: string;
+  username: string;
+  name: string;
+  role: 'admin' | 'staff';
+  counter?: string | null;
+  customerCount?: number;
+  todayStats: CounterStats;
+  periodStats: CounterStats;
+  lastActivityAt: string | null;
+  lastSummary: string | null;
+}
+
+export interface AdminCustomer extends Customer {
+  counterId: string | null;
+  counterName: string;
+  staffName: string;
+  staffUsername: string;
+}
+
+export interface StaffAccount {
+  id: string;
+  username: string;
+  role: 'admin' | 'staff';
+  name: string;
+  counter?: string | null;
+}
+
+export interface AdminDashboardResponse {
+  today: string;
+  counters: CounterSummary[];
+  customers: AdminCustomer[];
+  totalMatchingLogs: number;
+  logs: ActivityLogEntry[];
 }
 
 // Token lives in memory; on web it is also kept in localStorage so a refresh keeps you logged in.
@@ -164,5 +243,38 @@ export const api = {
     apiRequest<Payment>(`/customers/${encodeURIComponent(customerId)}/payments`, {
       method: 'POST',
       body: JSON.stringify({ ...payload, customerId }),
+    }),
+
+  // Admin Dashboard & Activity Logs
+  getAdminDashboard: (params?: {
+    from?: string;
+    to?: string;
+    actor?: string;
+    entityType?: string;
+    action?: string;
+    search?: string;
+    limit?: number;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.from) query.set('from', params.from);
+    if (params?.to) query.set('to', params.to);
+    if (params?.actor && params.actor !== 'All') query.set('actor', params.actor);
+    if (params?.entityType && params.entityType !== 'All') query.set('entityType', params.entityType);
+    if (params?.action && params.action !== 'All') query.set('action', params.action);
+    if (params?.search) query.set('search', params.search);
+    if (params?.limit) query.set('limit', String(params.limit));
+    const qs = query.toString();
+    return apiRequest<AdminDashboardResponse>(`/admin/dashboard${qs ? `?${qs}` : ''}`);
+  },
+
+  listAdminAccounts: () => apiRequest<StaffAccount[]>('/admin/accounts'),
+
+  updateStaffAccount: (
+    id: string,
+    payload: { name: string; counter: string; username: string; password?: string }
+  ) =>
+    apiRequest<StaffAccount>(`/admin/accounts/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
     }),
 };

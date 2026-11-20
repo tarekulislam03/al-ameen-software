@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const sheetsService = require('./sheetsService');
 const auth = require('./auth');
+const activityLog = require('./activityLog');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -134,6 +135,16 @@ app.post('/api/customers', async (req, res, next) => {
       documentStatus,
     });
 
+    activityLog.recordActivity({
+      user: req.user,
+      action: 'CREATE',
+      entityType: 'customer',
+      entityId: created.id,
+      customerId: created.id,
+      customerName: created.name,
+      summary: `Created customer "${created.name}" (${created.category || 'No category'}, Fee ₹${created.totalFee || 0})`,
+    });
+
     res.status(201).json(created);
   } catch (err) {
     next(err);
@@ -143,10 +154,28 @@ app.post('/api/customers', async (req, res, next) => {
 // 4. Update customer by unique ID
 const handleUpdateCustomer = async (req, res, next) => {
   try {
+    const before = await sheetsService.getCustomerById(req.params.id);
+    if (!before) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
     const updated = await sheetsService.updateCustomer(req.params.id, req.body);
     if (!updated) {
       return res.status(404).json({ error: 'Customer not found' });
     }
+    const changes = activityLog.diffFields(before, updated, activityLog.CUSTOMER_FIELDS);
+    const changedLabels = changes.map((c) => c.label).join(', ');
+    activityLog.recordActivity({
+      user: req.user,
+      action: 'UPDATE',
+      entityType: 'customer',
+      entityId: updated.id,
+      customerId: updated.id,
+      customerName: updated.name,
+      summary: changedLabels
+        ? `Updated customer "${updated.name}": ${changedLabels}`
+        : `Updated customer "${updated.name}"`,
+      changes,
+    });
     res.json(updated);
   } catch (err) {
     next(err);
@@ -159,10 +188,23 @@ app.patch('/api/customers/:id', handleUpdateCustomer);
 // 5. Delete customer by unique ID
 app.delete('/api/customers/:id', async (req, res, next) => {
   try {
+    const before = await sheetsService.getCustomerById(req.params.id);
+    if (!before) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
     const deleted = await sheetsService.deleteCustomer(req.params.id);
     if (!deleted) {
       return res.status(404).json({ error: 'Customer not found' });
     }
+    activityLog.recordActivity({
+      user: req.user,
+      action: 'DELETE',
+      entityType: 'customer',
+      entityId: req.params.id,
+      customerId: req.params.id,
+      customerName: before.name,
+      summary: `Deleted customer "${before.name}" (${before.phone || req.params.id})`,
+    });
     res.json({ message: 'Customer deleted successfully', id: req.params.id });
   } catch (err) {
     next(err);
@@ -226,6 +268,20 @@ const handleCreatePayment = async (req, res, next) => {
       note,
     });
 
+    const customer = await sheetsService.getCustomerById(customerId);
+    const customerName = customer?.name || customerId;
+    activityLog.recordActivity({
+      user: req.user,
+      action: 'CREATE',
+      entityType: 'payment',
+      entityId: payment.paymentId,
+      customerId: payment.customerId,
+      customerName,
+      summary: `Recorded payment ₹${payment.amount} (${payment.mode || 'Cash'}) for "${customerName}"`,
+      amount: payment.amount,
+      mode: payment.mode || 'Cash',
+    });
+
     res.status(201).json(payment);
   } catch (err) {
     next(err);
@@ -238,6 +294,10 @@ app.post('/api/customers/:id/payments', handleCreatePayment);
 // 3. Edit a payment by its unique payment ID
 const handleUpdatePayment = async (req, res, next) => {
   try {
+    const allPayments = await sheetsService.listAllPayments();
+    const before = allPayments.find((p) => p.paymentId === req.params.paymentId);
+    if (!before) return res.status(404).json({ error: 'Payment not found' });
+
     const { date, amount, mode, note } = req.body || {};
     const updated = await sheetsService.updatePayment(req.params.paymentId, {
       date,
@@ -246,6 +306,26 @@ const handleUpdatePayment = async (req, res, next) => {
       note,
     });
     if (!updated) return res.status(404).json({ error: 'Payment not found' });
+
+    const customer = await sheetsService.getCustomerById(updated.customerId);
+    const customerName = customer?.name || before.customerName || updated.customerId;
+    const changes = activityLog.diffFields(before, updated, activityLog.PAYMENT_FIELDS);
+    const changedLabels = changes.map((c) => c.label).join(', ');
+    activityLog.recordActivity({
+      user: req.user,
+      action: 'UPDATE',
+      entityType: 'payment',
+      entityId: updated.paymentId,
+      customerId: updated.customerId,
+      customerName,
+      summary: changedLabels
+        ? `Updated payment ${updated.paymentId} for "${customerName}": ${changedLabels}`
+        : `Updated payment ${updated.paymentId} for "${customerName}"`,
+      changes,
+      amount: updated.amount,
+      mode: updated.mode,
+    });
+
     res.json(updated);
   } catch (err) {
     next(err);
@@ -257,9 +337,112 @@ app.patch('/api/payments/:paymentId', handleUpdatePayment);
 // 4. Delete a payment by its unique payment ID
 app.delete('/api/payments/:paymentId', async (req, res, next) => {
   try {
+    const allPayments = await sheetsService.listAllPayments();
+    const before = allPayments.find((p) => p.paymentId === req.params.paymentId);
+    if (!before) return res.status(404).json({ error: 'Payment not found' });
+
     const deleted = await sheetsService.deletePayment(req.params.paymentId);
     if (!deleted) return res.status(404).json({ error: 'Payment not found' });
+
+    const customerName = before.customerName || before.customerId;
+    activityLog.recordActivity({
+      user: req.user,
+      action: 'DELETE',
+      entityType: 'payment',
+      entityId: req.params.paymentId,
+      customerId: before.customerId,
+      customerName,
+      summary: `Deleted payment ${req.params.paymentId} (₹${before.amount}, ${before.mode || 'Cash'}) for "${customerName}"`,
+      amount: before.amount,
+      mode: before.mode,
+    });
+
     res.json({ message: 'Payment deleted successfully', paymentId: req.params.paymentId });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================
+// ADMIN DASHBOARD & STAFF ACTIVITY ENDPOINTS
+// ==========================================
+
+async function syncHistoricalCounter1Logs() {
+  const accounts = auth.getPublicAccounts();
+  const counter1 = accounts.find((a) => a.role === 'staff');
+  if (!counter1) return 0;
+  const [customers, payments] = await Promise.all([
+    sheetsService.listCustomers(),
+    sheetsService.listAllPayments(),
+  ]);
+  return activityLog.backfillFromSheets({
+    customers,
+    payments,
+    actor: counter1,
+  });
+}
+
+app.get('/api/admin/dashboard', auth.requireAdmin, async (req, res, next) => {
+  try {
+    await syncHistoricalCounter1Logs();
+    const accounts = auth.getPublicAccounts();
+    const { from, to, actor, entityType, action, search, limit } = req.query;
+    const dashboard = activityLog.getDashboard({
+      accounts,
+      from: from ? String(from) : '',
+      to: to ? String(to) : '',
+      actor: actor ? String(actor) : '',
+      entityType: entityType ? String(entityType) : '',
+      action: action ? String(action) : '',
+      search: search ? String(search) : '',
+      limit: limit ? Number(limit) : 200,
+    });
+
+    const allCustomers = await sheetsService.listCustomers();
+    const { map: attrMap, fallbackStaff1 } = activityLog.getCustomerAttributionMap(accounts);
+
+    const customersWithCounter = allCustomers.map((c) => {
+      const attr = attrMap.get(c.id) || {
+        counterId: fallbackStaff1?.id || null,
+        counterName: fallbackStaff1?.counter || fallbackStaff1?.name || 'Counter 1',
+        staffName: fallbackStaff1?.name || 'Counter 1',
+        staffUsername: fallbackStaff1?.username || '',
+      };
+      return { ...c, ...attr };
+    });
+
+    // Count customers per counter
+    const countsByUsername = new Map();
+    for (const c of customersWithCounter) {
+      const key = c.staffUsername || 'unknown';
+      countsByUsername.set(key, (countsByUsername.get(key) || 0) + 1);
+    }
+    dashboard.counters = dashboard.counters.map((ctr) => ({
+      ...ctr,
+      customerCount: countsByUsername.get(ctr.username) || 0,
+    }));
+    dashboard.customers = customersWithCounter;
+
+    res.json(dashboard);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get('/api/admin/accounts', auth.requireAdmin, (req, res) => {
+  res.json(auth.getPublicAccounts());
+});
+
+app.put('/api/admin/accounts/:id', auth.requireAdmin, (req, res, next) => {
+  try {
+    const { name, counter, username, password } = req.body || {};
+    const updated = auth.updateStaffAccount(req.params.id, {
+      name,
+      counter,
+      username,
+      password,
+    });
+    res.json(updated);
   } catch (err) {
     next(err);
   }
@@ -277,10 +460,14 @@ app.use((err, req, res, next) => {
 if (require.main === module) {
   sheetsService
     .refreshCache()
-    .then((cache) => {
+    .then(async (cache) => {
       console.log(
         `[SheetsService] Cache initialized (${cache.syncSource}) with ${cache.customers.length} customers and ${cache.payments.length} payments.`
       );
+      const added = await syncHistoricalCounter1Logs();
+      if (added > 0) {
+        console.log(`[ActivityLog] Backfilled ${added} historical records for Counter 1.`);
+      }
     })
     .catch((err) => {
       console.warn('[SheetsService] Startup sync warning:', err.message);

@@ -213,6 +213,26 @@ export function CustomerFormDialog({
   );
 }
 
+function toDmy(iso: string) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    const [y, m, d] = iso.split('-');
+    return `${d}-${m}-${y}`;
+  }
+  return iso;
+}
+
+function toIsoFromDmy(dmy: string): string | null {
+  const m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(dmy.trim());
+  if (!m) return null;
+  const dd = Number(m[1]);
+  const mm = Number(m[2]);
+  const yyyy = Number(m[3]);
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+  const dt = new Date(yyyy, mm - 1, dd);
+  if (dt.getFullYear() !== yyyy || dt.getMonth() !== mm - 1 || dt.getDate() !== dd) return null;
+  return `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+}
+
 /** Add a payment (payment = null) or edit an existing one. Total paid can never exceed the total fee. */
 export function PaymentFormDialog({
   visible,
@@ -229,7 +249,7 @@ export function PaymentFormDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [pay, setPay] = useState({ amount: '', date: today(), mode: 'Cash', note: '' });
+  const [pay, setPay] = useState({ amount: '', date: toDmy(today()), mode: 'Cash', note: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const amountRef = useRef<InputRef>(null);
@@ -243,8 +263,13 @@ export function PaymentFormDialog({
     setError(null);
     setPay(
       payment
-        ? { amount: String(payment.amount), date: payment.date, mode: payment.mode, note: payment.note }
-        : { amount: customer.balance > 0 ? String(customer.balance) : '', date: today(), mode: 'Cash', note: '' }
+        ? { amount: String(payment.amount), date: toDmy(payment.date), mode: payment.mode, note: payment.note }
+        : {
+            amount: customer.balance > 0 ? String(customer.balance) : '',
+            date: toDmy(today()),
+            mode: 'Cash',
+            note: '',
+          }
     );
   }, [visible, customer, payment]);
 
@@ -261,14 +286,15 @@ export function PaymentFormDialog({
       setError(`Amount cannot exceed the balance due (max ${money(maxAmount)}).`);
       return;
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(pay.date)) {
-      setError('Date must be YYYY-MM-DD.');
+    const isoDate = toIsoFromDmy(pay.date);
+    if (!isoDate) {
+      setError('Date must be DD-MM-YYYY.');
       return;
     }
     try {
       setBusy(true);
       setError(null);
-      const body = { amount, date: pay.date, mode: pay.mode, note: pay.note };
+      const body = { amount, date: isoDate, mode: pay.mode, note: pay.note };
       if (payment) await api.updatePayment(payment.paymentId, body);
       else await api.createPayment(customer.id, body);
       onSaved();
@@ -290,10 +316,11 @@ export function PaymentFormDialog({
         Total fee {money(customer?.totalFee ?? 0)} | Max for this payment {money(maxAmount)}
       </T>
       <View style={s.grid}>
-        <Field label="Date (YYYY-MM-DD) *">
+        <Field label="Date (DD-MM-YYYY) *">
           <Input
             value={pay.date}
             onChangeText={(v) => setPay({ ...pay, date: v })}
+            placeholder="DD-MM-YYYY"
             returnKeyType="next"
             blurOnSubmit={false}
             onSubmitEditing={() => amountRef.current?.focus()}
