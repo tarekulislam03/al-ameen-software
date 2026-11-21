@@ -53,6 +53,7 @@ const getDefaultBaseUrl = () => {
 export const API_BASE_URL = getDefaultBaseUrl();
 
 export interface AuthUser {
+  id?: string | null;
   username: string;
   role: 'admin' | 'staff';
   name: string;

@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { CATEGORIES, CustomerFormDialog } from '@/components/customer-forms';
-import { Btn, Chips, formatDate, Input, InputRef, money, ProgressStatusBar, Select, StatusBadge, T } from '@/components/erp-ui';
+import { Btn, Chips, DatePicker, formatDate, Input, InputRef, money, ProgressStatusBar, Select, StatusBadge, T } from '@/components/erp-ui';
 import { ERP } from '@/constants/erp';
 import { api, Customer } from '@/services/api';
 
@@ -191,20 +191,14 @@ export default function CustomersScreen() {
       </View>
       <Select label="Category" value={categoryFilter} options={categories} onChange={setCategoryFilter} mobile={isMobile} />
       <View style={s.filterField}>
-        <T style={s.fieldLabel}>Enrolled from / to (YYYY-MM-DD)</T>
+        <T style={s.fieldLabel}>Enrolled from / to (DD-MM-YYYY)</T>
         <View style={s.dateRow}>
-          <Input
-            value={dateFrom}
-            onChangeText={setDateFrom}
-            placeholder="From"
-            style={[{ width: 110 }, isMobile && { minHeight: 44 }]}
-          />
-          <Input
-            value={dateTo}
-            onChangeText={setDateTo}
-            placeholder="To"
-            style={[{ width: 110 }, isMobile && { minHeight: 44 }]}
-          />
+          <View style={{ width: isMobile ? 140 : 136 }}>
+            <DatePicker value={dateFrom} onChange={setDateFrom} mobile={isMobile} />
+          </View>
+          <View style={{ width: isMobile ? 140 : 136 }}>
+            <DatePicker value={dateTo} onChange={setDateTo} mobile={isMobile} />
+          </View>
         </View>
       </View>
       <View style={[s.filterField, { justifyContent: 'flex-end' }]}>

@@ -280,6 +280,7 @@ function requireAdmin(req, res, next) {
 function me(req, res) {
   res.json({
     user: {
+      id: req.user.id || null,
       username: req.user.username,
       role: req.user.role,
       name: req.user.name,

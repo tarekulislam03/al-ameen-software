@@ -433,19 +433,84 @@ test('Google Sheets Service & REST API Endpoints (Customers & Payments)', async 
     });
     assert.equal(p1.status, 201);
 
-    // Staff2 updates that customer and records a UPI payment
-    const c1Edit = await reqAs(staff2Token, 'PUT', `/api/customers/${c1.body.id}`, {
+    // Staff2 CANNOT see, update, delete, or record payments on Staff1's customer
+    const s2ListBefore = await reqAs(staff2Token, 'GET', '/api/customers');
+    assert.equal(s2ListBefore.status, 200);
+    assert.ok(!s2ListBefore.body.some((c) => c.id === c1.body.id));
+
+    const s2GetC1 = await reqAs(staff2Token, 'GET', `/api/customers/${c1.body.id}`);
+    assert.equal(s2GetC1.status, 403);
+
+    const s2EditC1 = await reqAs(staff2Token, 'PUT', `/api/customers/${c1.body.id}`, {
+      phone: '9876500002',
+    });
+    assert.equal(s2EditC1.status, 403);
+
+    const s2DelC1 = await reqAs(staff2Token, 'DELETE', `/api/customers/${c1.body.id}`);
+    assert.equal(s2DelC1.status, 403);
+
+    const s2PayC1 = await reqAs(staff2Token, 'POST', `/api/customers/${c1.body.id}/payments`, {
+      amount: 500,
+      mode: 'UPI',
+    });
+    assert.equal(s2PayC1.status, 403);
+
+    const s2ListC1Pay = await reqAs(staff2Token, 'GET', `/api/customers/${c1.body.id}/payments`);
+    assert.equal(s2ListC1Pay.status, 403);
+
+    const s2EditP1 = await reqAs(staff2Token, 'PUT', `/api/payments/${p1.body.paymentId}`, {
+      amount: 1000,
+    });
+    assert.equal(s2EditP1.status, 403);
+
+    const s2DelP1 = await reqAs(staff2Token, 'DELETE', `/api/payments/${p1.body.paymentId}`);
+    assert.equal(s2DelP1.status, 403);
+
+    const s2AllPayments = await reqAs(staff2Token, 'GET', '/api/payments');
+    assert.equal(s2AllPayments.status, 200);
+    assert.ok(!s2AllPayments.body.some((p) => p.paymentId === p1.body.paymentId));
+
+    // Staff2 creates their own customer, updates it, and records a UPI payment
+    const c2 = await reqAs(staff2Token, 'POST', '/api/customers', {
+      name: 'Meera Nair',
+      phone: '9876500009',
+      category: 'LMV Car',
+      totalFee: 5000,
+    });
+    assert.equal(c2.status, 201);
+
+    const c2Edit = await reqAs(staff2Token, 'PUT', `/api/customers/${c2.body.id}`, {
       phone: '9876500002',
       documentStatus: 'Verified',
     });
-    assert.equal(c1Edit.status, 200);
+    assert.equal(c2Edit.status, 200);
 
-    const p2 = await reqAs(staff2Token, 'POST', `/api/customers/${c1.body.id}/payments`, {
+    const p2 = await reqAs(staff2Token, 'POST', `/api/customers/${c2.body.id}/payments`, {
       amount: 2500,
       mode: 'UPI',
       note: 'Counter 2 balance',
     });
     assert.equal(p2.status, 201);
+
+    // Staff1 sees c1 but NOT c2; Staff2 sees c2 but NOT c1
+    const s1List = await reqAs(staff1Token, 'GET', '/api/customers');
+    assert.equal(s1List.status, 200);
+    assert.ok(s1List.body.some((c) => c.id === c1.body.id));
+    assert.ok(!s1List.body.some((c) => c.id === c2.body.id));
+
+    const s2List = await reqAs(staff2Token, 'GET', '/api/customers');
+    assert.equal(s2List.status, 200);
+    assert.ok(s2List.body.some((c) => c.id === c2.body.id));
+    assert.ok(!s2List.body.some((c) => c.id === c1.body.id));
+
+    // Admin can access ALL customers and payments across counters
+    const adminList = await request(server, 'GET', '/api/customers');
+    assert.equal(adminList.status, 200);
+    assert.ok(adminList.body.some((c) => c.id === c1.body.id));
+    assert.ok(adminList.body.some((c) => c.id === c2.body.id));
+
+    const adminGetC2 = await request(server, 'GET', `/api/customers/${c2.body.id}`);
+    assert.equal(adminGetC2.status, 200);
 
     // Admin checks dashboard
     const dash = await request(server, 'GET', '/api/admin/dashboard');
@@ -461,6 +526,7 @@ test('Google Sheets Service & REST API Endpoints (Customers & Payments)', async 
     assert.equal(counter1.todayStats.paymentCollectedAmount, 1500);
     assert.equal(counter1.todayStats.paymentModeBreakdown.Cash, 1500);
 
+    assert.equal(counter2.todayStats.customersCreated, 1);
     assert.equal(counter2.todayStats.customersUpdated, 1);
     assert.equal(counter2.todayStats.paymentsCreated, 1);
     assert.equal(counter2.todayStats.paymentCollectedAmount, 2500);
@@ -471,7 +537,7 @@ test('Google Sheets Service & REST API Endpoints (Customers & Payments)', async 
       (l) => l.actor.username === 'staff2' && l.entityType === 'customer' && l.action === 'UPDATE'
     );
     assert.ok(updateLog);
-    assert.ok(updateLog.changes.some((ch) => ch.field === 'phone' && ch.from === '9876500001' && ch.to === '9876500002'));
+    assert.ok(updateLog.changes.some((ch) => ch.field === 'phone' && ch.from === '9876500009' && ch.to === '9876500002'));
     assert.ok(updateLog.changes.some((ch) => ch.field === 'documentStatus' && ch.from === 'Pending' && ch.to === 'Verified'));
 
     // Staff cannot manage staff accounts

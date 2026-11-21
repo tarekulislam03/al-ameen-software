@@ -50,6 +50,34 @@ app.post('/api/sync', async (req, res, next) => {
 });
 
 // ==========================================
+// COUNTER-SCOPED ACCESS HELPERS
+// ==========================================
+
+function getCustomerAttribution() {
+  const accounts = auth.getPublicAccounts();
+  const { map: attrMap, fallbackStaff1 } = activityLog.getCustomerAttributionMap(accounts);
+  const fallbackAttr = {
+    counterId: fallbackStaff1?.id || null,
+    counterName: fallbackStaff1?.counter || fallbackStaff1?.name || 'Counter 1',
+    staffName: fallbackStaff1?.name || 'Counter 1',
+    staffUsername: fallbackStaff1?.username || '',
+  };
+  return (customerId) => attrMap.get(customerId) || fallbackAttr;
+}
+
+function canAccessCustomer(user, attr) {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  if (attr?.counterId && user.id) {
+    return attr.counterId === user.id;
+  }
+  if (attr?.staffUsername && user.username) {
+    return attr.staffUsername === user.username;
+  }
+  return false;
+}
+
+// ==========================================
 // CUSTOMERS REST ENDPOINTS
 // ==========================================
 
@@ -60,6 +88,10 @@ app.get('/api/customers', async (req, res, next) => {
     const { search, documentStatus, paymentStatus } = req.query;
 
     let filtered = customers;
+    if (req.user?.role !== 'admin') {
+      const getAttr = getCustomerAttribution();
+      filtered = filtered.filter((c) => canAccessCustomer(req.user, getAttr(c.id)));
+    }
     if (search) {
       const q = String(search).toLowerCase().trim();
       filtered = filtered.filter(
@@ -93,6 +125,9 @@ app.get('/api/customers/:id', async (req, res, next) => {
     const customer = await sheetsService.getCustomerById(req.params.id);
     if (!customer) {
       return res.status(404).json({ error: 'Customer not found' });
+    }
+    if (!canAccessCustomer(req.user, getCustomerAttribution()(customer.id))) {
+      return res.status(403).json({ error: 'Access denied: this customer belongs to another counter' });
     }
     res.json(customer);
   } catch (err) {
@@ -158,6 +193,9 @@ const handleUpdateCustomer = async (req, res, next) => {
     if (!before) {
       return res.status(404).json({ error: 'Customer not found' });
     }
+    if (!canAccessCustomer(req.user, getCustomerAttribution()(before.id))) {
+      return res.status(403).json({ error: 'Access denied: this customer belongs to another counter' });
+    }
     const updated = await sheetsService.updateCustomer(req.params.id, req.body);
     if (!updated) {
       return res.status(404).json({ error: 'Customer not found' });
@@ -192,6 +230,9 @@ app.delete('/api/customers/:id', async (req, res, next) => {
     if (!before) {
       return res.status(404).json({ error: 'Customer not found' });
     }
+    if (!canAccessCustomer(req.user, getCustomerAttribution()(before.id))) {
+      return res.status(403).json({ error: 'Access denied: this customer belongs to another counter' });
+    }
     const deleted = await sheetsService.deleteCustomer(req.params.id);
     if (!deleted) {
       return res.status(404).json({ error: 'Customer not found' });
@@ -222,6 +263,9 @@ app.get('/api/customers/:id/payments', async (req, res, next) => {
     if (!customer) {
       return res.status(404).json({ error: 'Customer not found' });
     }
+    if (!canAccessCustomer(req.user, getCustomerAttribution()(customer.id))) {
+      return res.status(403).json({ error: 'Access denied: this customer belongs to another counter' });
+    }
     const payments = await sheetsService.listPaymentsByCustomer(req.params.id);
     res.json(payments);
   } catch (err) {
@@ -234,10 +278,19 @@ app.get('/api/payments', async (req, res, next) => {
   try {
     const { customerId } = req.query;
     if (customerId) {
-      const payments = await sheetsService.listPaymentsByCustomer(String(customerId));
+      const targetId = String(customerId);
+      const customer = await sheetsService.getCustomerById(targetId);
+      if (customer && !canAccessCustomer(req.user, getCustomerAttribution()(customer.id))) {
+        return res.status(403).json({ error: 'Access denied: this customer belongs to another counter' });
+      }
+      const payments = await sheetsService.listPaymentsByCustomer(targetId);
       return res.json(payments);
     }
     const payments = await sheetsService.listAllPayments();
+    if (req.user?.role !== 'admin') {
+      const getAttr = getCustomerAttribution();
+      return res.json(payments.filter((p) => canAccessCustomer(req.user, getAttr(p.customerId))));
+    }
     res.json(payments);
   } catch (err) {
     next(err);
@@ -260,6 +313,11 @@ const handleCreatePayment = async (req, res, next) => {
         .json({ error: 'Valid positive payment amount is required' });
     }
 
+    const customer = await sheetsService.getCustomerById(customerId);
+    if (customer && !canAccessCustomer(req.user, getCustomerAttribution()(customer.id))) {
+      return res.status(403).json({ error: 'Access denied: this customer belongs to another counter' });
+    }
+
     const payment = await sheetsService.createPayment({
       customerId,
       date,
@@ -268,7 +326,6 @@ const handleCreatePayment = async (req, res, next) => {
       note,
     });
 
-    const customer = await sheetsService.getCustomerById(customerId);
     const customerName = customer?.name || customerId;
     activityLog.recordActivity({
       user: req.user,
@@ -297,6 +354,9 @@ const handleUpdatePayment = async (req, res, next) => {
     const allPayments = await sheetsService.listAllPayments();
     const before = allPayments.find((p) => p.paymentId === req.params.paymentId);
     if (!before) return res.status(404).json({ error: 'Payment not found' });
+    if (!canAccessCustomer(req.user, getCustomerAttribution()(before.customerId))) {
+      return res.status(403).json({ error: 'Access denied: this payment belongs to another counter' });
+    }
 
     const { date, amount, mode, note } = req.body || {};
     const updated = await sheetsService.updatePayment(req.params.paymentId, {
@@ -340,6 +400,9 @@ app.delete('/api/payments/:paymentId', async (req, res, next) => {
     const allPayments = await sheetsService.listAllPayments();
     const before = allPayments.find((p) => p.paymentId === req.params.paymentId);
     if (!before) return res.status(404).json({ error: 'Payment not found' });
+    if (!canAccessCustomer(req.user, getCustomerAttribution()(before.customerId))) {
+      return res.status(403).json({ error: 'Access denied: this payment belongs to another counter' });
+    }
 
     const deleted = await sheetsService.deletePayment(req.params.paymentId);
     if (!deleted) return res.status(404).json({ error: 'Payment not found' });

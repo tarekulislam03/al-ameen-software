@@ -11,10 +11,12 @@ function Gate() {
   const { user, ready } = useAuth();
   const pathname = usePathname();
   const onLogin = pathname === '/login';
+  const isAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/');
 
   if (!ready) return <View style={{ flex: 1, backgroundColor: ERP.pageBg }} />;
   if (!user && !onLogin) return <Redirect href="/login" />;
   if (user && onLogin) return <Redirect href="/" />;
+  if (user && user.role !== 'admin' && isAdminRoute) return <Redirect href="/" />;
 
   if (!user) return <Slot />;
   return (
